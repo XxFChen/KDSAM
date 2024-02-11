@@ -10,12 +10,12 @@ from edge_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 def parse_option():
     parser = argparse.ArgumentParser('argument for pre-processing')
 
-    parser.add_argument('--dataset_path', type=str, default="/dataset/vyueyu/sa-1b", help='root path of dataset')
+    parser.add_argument('--dataset_path', type=str, default="/root/autodl-tmp/sa-1b", help='root path of dataset')
     parser.add_argument('--dataset_dir', type=str, required=True, help='dir of dataset')
 
     parser.add_argument('--device', type=str, default='cuda', help='device')
     parser.add_argument('--sam_type', type=str, default="vit_h")
-    parser.add_argument('--sam_ckpt', type=str, default="/dataset/vyueyu/project/MobileSAM/sam_vit_h_4b8939.pth")
+    parser.add_argument('--sam_ckpt', type=str, default="/root/autodl-tmp/sam_vit_h_4b8939.pth")
 
     args = parser.parse_args()
     return args
