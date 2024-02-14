@@ -3,12 +3,14 @@
 
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
+import sys
+sys.path.insert(0, '/root/autodl-tmp/KDSAM/edge_sam')
 
 import torch
 
 from functools import partial
 
-from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer, RepViT
+from edge_sam.modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer, RepViT
 
 
 prompt_embed_dim = 256
