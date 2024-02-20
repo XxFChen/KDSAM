@@ -87,17 +87,19 @@ def test(args, model, test_loader):
     test_loss = 0
     with torch.no_grad():
         for idx, (imgs, target_feats, mask_paths) in enumerate(test_loader):
-            imgs, target_feats = imgs.cuda(args.local_rank), target_feats.cuda(args.local_rank)
+            imgs, target_feats = imgs.to(device), target_feats.to(device)
             pred_feats = model.module(imgs)
             test_loss += customized_mseloss(pred_feats, target_feats).item()
 
     return test_loss / len(test_loader)
 
-    
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
 def main(args):
 
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
 
     # file folder creating
     if args.local_rank == 0:
@@ -118,7 +120,7 @@ def main(args):
         cudnn.benchmark = args.benchmark
     
     # dataset
-    train_dirs = ["sa_" + str(i).zfill(6) for i in range(20, 29)]
+    train_dirs = ["sa_" + str(i).zfill(6) for i in range(20, 30)]
     val_dirs = ['sa_000137']
     train_dataset = sa1b_dataset(args.dataset_path, train_dirs, transform)
     val_dataset = sa1b_dataset(args.dataset_path, val_dirs, transform, args.eval_nums)
@@ -175,14 +177,14 @@ def main(args):
             if total_iters % args.save_iters == 0:
                 save_path = os.path.join(args.root_path, args.work_dir, args.save_dir, "iter_" + str(total_iters) + ".pth")
                 print("save model to {}".format(save_path))
-                torch.save(model.module.state_dict(), save_path)
+                torch.save(model.state_dict(), save_path)
 
                 # evaluation
             
-            if total_iters % args.eval_iters == 0:
-                test_loss = test(args, model, val_loader)
-                print('\nTest set: Average loss: {:.4f}\n'.format(test_loss))
-                writer.add_scalar("eval_mse_loss", test_loss, total_iters)
+            # if total_iters % args.eval_iters == 0:
+            #     test_loss = test(args, model, val_loader)
+            #     print('\nTest set: Average loss: {:.4f}\n'.format(test_loss))
+            #     writer.add_scalar("eval_mse_loss", test_loss, total_iters)
             
 
         scheduler.step()

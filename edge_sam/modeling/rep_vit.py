@@ -286,7 +286,7 @@ class BN_Linear(torch.nn.Sequential):
         m.bias.data.copy_(b)
         return m
 
-
+1221
 class RepViT(nn.Module):
     arch_settings = {
         'm1': m1_cfgs,
