@@ -3,7 +3,10 @@
 
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
-
+try:
+    from typing import Literal
+except ImportError:
+    from typing_extensions import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,7 +14,6 @@ import torch.nn.functional as F
 from typing import Optional, Tuple, Type
 
 from .common import LayerNorm2d, MLPBlock
-
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
 class ImageEncoderViT(nn.Module):
@@ -33,6 +35,11 @@ class ImageEncoderViT(nn.Module):
         rel_pos_zero_init: bool = True,
         window_size: int = 0,
         global_attn_indexes: Tuple[int, ...] = (),
+        #change
+        # global_pool: Literal['', 'avg', 'token', 'map'] = 'token',
+        # class_token: bool = True,
+        # pos_drop_rate: float = 0.,
+
     ) -> None:
         """
         Args:
@@ -55,6 +62,27 @@ class ImageEncoderViT(nn.Module):
         super().__init__()
         self.img_size = img_size
 
+        # change
+        # assert global_pool in ('', 'avg', 'token', 'map')
+        # self.global_pool = global_pool
+
+        # self.num_features = self.embed_dim = embed_dim
+
+        # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) if class_token else None
+        # self.pos_drop = nn.Dropout(p=pos_drop_rate)
+        
+        # if global_pool == 'map':
+        #     self.attn_pool = AttentionPoolLatent(
+        #         self.embed_dim,
+        #         num_heads=num_heads,
+        #         mlp_ratio=mlp_ratio,
+        #         norm_layer=norm_layer,
+        #     )
+        # else:
+        #     self.attn_pool = None
+
+        # change
+        
         self.patch_embed = PatchEmbed(
             kernel_size=(patch_size, patch_size),
             stride=(patch_size, patch_size),
@@ -102,18 +130,68 @@ class ImageEncoderViT(nn.Module):
             ),
             LayerNorm2d(out_chans),
         )
+        
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+
+    def forward(self, x: torch.Tensor, requires_feat: bool = False) :
+        if requires_feat:
+            x, feats = self.forward_features(x, requires_feat=True)
+            feats.append(x)  # 将最终层前的特征也加入列表
+            return x, feats
+        else:
+            x = self.forward_features(x, requires_feat=False)
+            return x
+
+
+    def forward_features(self, x: torch.Tensor, requires_feat: bool = False) :
+        feats = []  # 用于存储中间特征
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
-
+        
         for blk in self.blocks:
             x = blk(x)
+            if requires_feat:
+                feats.append(x)  # 收集每个块的输出
 
         x = self.neck(x.permute(0, 3, 1, 2))
+        return (x, feats) if requires_feat else x
 
-        return x
+    
+
+    def stage_info(self, stage):
+        
+        shape = (4097, 768)  # 这是默认的shape，适用于大多数阶段
+        if stage == 1:
+            index = 1
+        elif stage == 2:
+            index = 3
+        elif stage == 3:
+            index = 9
+        elif stage == 4:
+            index = 11
+        elif stage == -1:
+            index = -1
+            shape = 768  # 最终阶段的特征维度可能与之前的不同
+        else:
+            raise ValueError(f'Stage {stage} out of range (1-4)')
+
+        return index, shape
+
+
+    # def forward(self, x: torch.Tensor) -> torch.Tensor:
+    #     x = self.patch_embed(x)
+    #     if self.pos_embed is not None:
+    #         x = x + self.pos_embed
+
+    #     for blk in self.blocks:
+    #         x = blk(x)
+
+    #     x = self.neck(x.permute(0, 3, 1, 2))
+
+    #     return x
+
 
 
 class Block(nn.Module):

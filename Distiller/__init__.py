@@ -1,9 +1,3 @@
-from ._base import Vanilla
-from .ReviewKD import ReviewKD
-from .DKD import DKD
+from .ofa import OFA
 
-distiller_dict = {
-    "NONE": Vanilla,
-    "REVIEWKD": ReviewKD,
-    "DKD": DKD,
-}
+from .registry import get_distiller

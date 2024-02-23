@@ -17,6 +17,8 @@ from dataset import transform, sa1b_dataset
 from edge_sam.modeling.rep_vit import RepViT as StudentModel
 from edge_sam.build_sam import build_sam_vit_h 
 
+
+from Distiller.ofa import OFA
 # from torch import distributed as dist
 # from torch.utils.data.distributed import DistributedSampler
 
@@ -120,7 +122,7 @@ def main(args):
         cudnn.benchmark = args.benchmark
     
     # dataset
-    train_dirs = ["sa_" + str(i).zfill(6) for i in range(20, 30)]
+    train_dirs = ["sa_" + str(i).zfill(6) for i in range(20, 21)]
     val_dirs = ['sa_000137']
     train_dataset = sa1b_dataset(args.dataset_path, train_dirs, transform)
     val_dataset = sa1b_dataset(args.dataset_path, val_dirs, transform, args.eval_nums)

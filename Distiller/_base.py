@@ -1,62 +1,46 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
+from .registry import register_distiller
 
 
-class Distiller(nn.Module):
-    def __init__(self, student, teacher):
-        super(Distiller, self).__init__()
+class BaseDistiller(nn.Module):
+    def __init__(self, student, teacher, criterion, args):
+        super(BaseDistiller, self).__init__()
         self.student = student
         self.teacher = teacher
+        self.criterion = criterion
+        self.args = args
 
-    def train(self, mode=True):
-        # teacher as eval mode by default
-        if not isinstance(mode, bool):
-            raise ValueError("training mode is expected to be boolean")
-        self.training = mode
-        for module in self.children():
-            module.train(mode)
-        self.teacher.eval()
-        return self
+    def forward(self, image, label, *args, **kwargs):
+        raise NotImplementedError
 
     def get_learnable_parameters(self):
-        # if the method introduces extra parameters, re-impl this function
-        return [v for k, v in self.student.named_parameters()]
-
-    def get_extra_parameters(self):
-        # calculate the extra parameters introduced by the distiller
-        return 0
-
-    def forward_train(self, **kwargs):
-        # training function for the distillation method
-        raise NotImplementedError()
-
-    def forward_test(self, image):
-        return self.student(image)[0]
-
-    def forward(self, **kwargs):
-        if self.training:
-            return self.forward_train(**kwargs)
-        return self.forward_test(kwargs["image"])
+        student_params = 0
+        extra_params = 0
+        for n, p in self.named_parameters():
+            if n.startswith('student'):
+                student_params += p.numel()
+            elif n.startswith('teacher'):
+                continue
+            else:
+                if p.requires_grad:
+                    extra_params += p.numel()
+        return student_params, extra_params
 
 
-class Vanilla(nn.Module):
-    def __init__(self, student):
-        super(Vanilla, self).__init__()
-        self.student = student
 
-    def get_learnable_parameters(self):
-        return [v for k, v in self.student.named_parameters()]
+@register_distiller
+class Vanilla(BaseDistiller):
+    requires_feat = False
 
-    def forward_train(self, image, target, **kwargs):
-        logits_student, _ = self.student(image)
-        loss = F.cross_entropy(logits_student, target)
-        return logits_student, {"ce": loss}
+    def __init__(self, student, teacher, criterion, args, **kwargs):
+        super(Vanilla, self).__init__(student, teacher, criterion, args)
 
-    def forward(self, **kwargs):
-        if self.training:
-            return self.forward_train(**kwargs)
-        return self.forward_test(kwargs["image"])
+    def forward(self, image, label, *args, **kwargs):
+        logits_student = self.student(image)
 
-    def forward_test(self, image):
-        return self.student(image)[0]
+        loss_gt = self.args.gt_loss_weight * self.criterion(logits_student, label)
+        losses_dict = {
+            "loss_gt": loss_gt,
+        }
+        return logits_student, losses_dict
