@@ -6,6 +6,7 @@ import argparse
 import time
 import json
 import torch
+from edge_sam.modeling.rep_vit import RepViT
 
 from dataset import transform
 from train import customized_mseloss
@@ -17,20 +18,20 @@ def parse_option():
     parser.add_argument('--device', type=str, default='cuda', help='device')
 
     # eval dataset settings
-    parser.add_argument('--dataset_path', type=str, default="/dataset/vyueyu/sa-1b/sa_000020", help='root path of dataset')
+    parser.add_argument('--dataset_path', type=str, default="/root/autodl-tmp/SA-1B/sa_000137", help='root path of dataset')
     parser.add_argument('--eval_num', type=int, default=20)
-    parser.add_argument('--data_idx_offset', type=int, default=223750)
+    parser.add_argument('--data_idx_offset', type=int, default=1532781)
 
     # our mobile sam model
-    parser.add_argument('--ckpt', type=str, default="/dataset/vyueyu/project/MobileSAM/exp_aug/adamw_lr_1e-3_wd_5e-4_v100_aug/ckpt/final.pth")
+    parser.add_argument('--ckpt', type=str, default="/root/autodl-tmp/KDSAM/test/ckpt/iter_50000.pth")
 
     # the given mobile sam model
-    parser.add_argument('--mobile_sam_type', type=str, default="vit_t")
-    parser.add_argument('--mobile_sam_ckpt', type=str, default="/dataset/vyueyu/project/MobileSAM/weights/mobile_sam.pt")
+    parser.add_argument('--mobile_sam_type', type=str, default="edge_sam")
+    parser.add_argument('--mobile_sam_ckpt', type=str, default="/root/autodl-tmp/sam_vit_h_4b8939.pth")
 
     # sam model 
     parser.add_argument('--sam_type', type=str, default="vit_h")
-    parser.add_argument('--sam_ckpt', type=str, default="/dataset/vyueyu/project/MobileSAM/sam_vit_h_4b8939.pth")
+    parser.add_argument('--sam_ckpt', type=str, default="/root/autodl-tmp/sam_vit_h_4b8939.pth")
 
     # visualization
     parser.add_argument('--vis', type=bool, default=True, help='whether to visualize the segment results')
@@ -81,24 +82,36 @@ if __name__ == "__main__":
     # sam_predictor = SamPredictor(sam)
 
     # mobile sam provided
-    mobile_sam = sam_model_registry[args.mobile_sam_type](checkpoint=args.mobile_sam_ckpt)
-    mobile_sam.to(device=args.device)
-    mobile_sam.eval()
+    # mobile_sam = sam_model_registry[args.mobile_sam_type](checkpoint=args.mobile_sam_ckpt)
+    # mobile_sam.to(device=args.device)
+    # mobile_sam.eval()
+
+
+
+
+    original_sam = sam_model_registry[args.sam_type](checkpoint=args.sam_ckpt)
+    # 创建 RepVIT 实例并加载训练后的权重
+    retrained_repvit = RepViT(arch="m3", img_size=1024, upsample_mode="bicubic")  # 或根据您的模型具体情况调整参数
+    retrained_repvit.load_state_dict(torch.load('/root/autodl-tmp/KDSAM/test/ckpt/iter_50000.pth'))
+    original_sam.image_encoder = retrained_repvit
+    original_sam.to(device=args.device)
+    mobile_sam_retrained = original_sam
+    mobile_sam_retrained.eval()
 
     # our retrained mobile sam 
-    mobile_sam_retrained = sam_model_registry[args.mobile_sam_type](checkpoint=args.mobile_sam_ckpt)
-    mobile_sam_retrained.image_encoder.load_state_dict(torch.load(args.ckpt))
-    mobile_sam_retrained.to(device=args.device)
-    mobile_sam_retrained.eval()
+    # mobile_sam_retrained = sam_model_registry[args.mobile_sam_type](checkpoint=args.mobile_sam_ckpt)
+    # mobile_sam_retrained.image_encoder.load_state_dict(torch.load(args.ckpt))
+    # mobile_sam_retrained.to(device=args.device)
+    # mobile_sam_retrained.eval()
 
     if args.vis:
         sam_mask_generator = SamAutomaticMaskGenerator(sam)
-        mobile_sam_mask_generator = SamAutomaticMaskGenerator(mobile_sam)
+        # mobile_sam_mask_generator = SamAutomaticMaskGenerator(mobile_sam)
         mobile_sam_retrained_mask_generator = SamAutomaticMaskGenerator(mobile_sam_retrained)
     
     if args.miou:
         sam_predictor = SamPredictor(sam)
-        mobile_sam_predictor = SamPredictor(mobile_sam)
+        # mobile_sam_predictor = SamPredictor(mobile_sam)
         mobile_sam_retrained_predictor = SamPredictor(mobile_sam_retrained)
 
     # -----start evaluation----- #
@@ -111,65 +124,65 @@ if __name__ == "__main__":
         test_img = cv2.imread(test_img_path)
         test_img = cv2.cvtColor(test_img, cv2.COLOR_BGR2RGB)
 
-        if args.vis:
-            # generate masks for sam
-            start_time = time.time()
-            sam_masks = sam_mask_generator.generate(test_img)
-            sam_time = time.time() - start_time
-            # generate masks for mobilesam
-            start_time = time.time()
-            mobile_sam_masks = mobile_sam_mask_generator.generate(test_img)
-            mobile_sam_time = time.time() - start_time
-            # generate masks for our mobilesam
-            start_time = time.time()
-            mobile_sam_retrained_masks = mobile_sam_retrained_mask_generator.generate(test_img)
-            mobile_sam_retrained_time = time.time() - start_time
+        # if args.vis:
+        #     # generate masks for sam
+        #     start_time = time.time()
+        #     sam_masks = sam_mask_generator.generate(test_img)
+        #     sam_time = time.time() - start_time
+        #     # generate masks for mobilesam
+        #     # start_time = time.time()
+        #     # mobile_sam_masks = mobile_sam_mask_generator.generate(test_img)
+        #     # mobile_sam_time = time.time() - start_time
+        #     # generate masks for our mobilesam
+        #     start_time = time.time()
+        #     mobile_sam_retrained_masks = mobile_sam_retrained_mask_generator.generate(test_img)
+        #     mobile_sam_retrained_time = time.time() - start_time
 
-            # save vis results
-            plt.figure(figsize=(60,20))
+        #     # save vis results
+        #     plt.figure(figsize=(60,20))
 
-            plt.subplot(1,3,1)
-            plt.imshow(test_img)
-            show_anns(sam_masks)
-            plt.axis('off')
-            plt.title("SAM")
+        #     plt.subplot(1,3,1)
+        #     plt.imshow(test_img)
+        #     show_anns(sam_masks)
+        #     plt.axis('off')
+        #     plt.title("SAM")
 
-            plt.subplot(1,3,2)
-            plt.imshow(test_img)
-            show_anns(mobile_sam_masks)
-            plt.axis('off')
-            plt.title("MobileSAM (given)")
+        #     # plt.subplot(1,3,2)
+        #     # plt.imshow(test_img)
+        #     # show_anns(mobile_sam_masks)
+        #     # plt.axis('off')
+        #     # plt.title("MobileSAM (given)")
 
-            plt.subplot(1,3,3)
-            plt.imshow(test_img)
-            show_anns(mobile_sam_retrained_masks)
-            plt.axis('off')
-            plt.title("Our MobileSAM (re-trained)")
+        #     plt.subplot(1,3,2)
+        #     plt.imshow(test_img)
+        #     show_anns(mobile_sam_retrained_masks)
+        #     plt.axis('off')
+        #     plt.title("Our MobileSAM (re-trained)")
 
-            plt.savefig(os.path.join(args.work_dir, args.vis_dir, str(i) + ".jpg"))
-            plt.clf()
-            plt.close()
+        #     plt.savefig(os.path.join(args.work_dir, args.vis_dir, str(i) + ".jpg"))
+        #     plt.clf()
+        #     plt.close()
 
-            tensor_input = transform(test_img)[None, :, :, :].to(args.device)
-            # image encoder time and loss
-            start_time = time.time()
-            pred = mobile_sam.image_encoder(tensor_input)
-            mobile_sam_encoder_retrained_time = time.time() - start_time
+        #     tensor_input = transform(test_img)[None, :, :, :].to(args.device)
+        #     # image encoder time and loss
+        #     # start_time = time.time()
+        #     # pred = mobile_sam.image_encoder(tensor_input)
+        #     # mobile_sam_encoder_retrained_time = time.time() - start_time
 
-            start_time = time.time()
-            our_pred = mobile_sam_retrained.image_encoder(tensor_input)
-            mobile_sam_encoder_time = time.time() - start_time
+        #     start_time = time.time()
+        #     our_pred = mobile_sam_retrained.image_encoder(tensor_input)
+        #     mobile_sam_encoder_time = time.time() - start_time
 
-            target = torch.from_numpy(np.load(os.path.join(args.dataset_path, "sa_" + str(i) + ".npy"))).to(args.device)
+        #     target = torch.from_numpy(np.load(os.path.join(args.dataset_path, "sa_" + str(i) + ".npy"))).to(args.device)
 
-            print("Image Index {}:".format(i))
-            print("MSE loss: \t\t\t MobileSAM {:.3f} \t Our MobileSAM {:.3f}".format(customized_mseloss(pred, target).item(), customized_mseloss(our_pred, target).item()))
-            print("Encoder inference time: \t MobileSAM {:.3f}s \t Our MobileSAM {:.3f}s".format(mobile_sam_encoder_time, mobile_sam_encoder_retrained_time))
-            print("Model inference time: \t\t MobileSAM {:.3f}s \t Our MobileSAM {:.3f}s \t SAM {:.3f}s \n".format(mobile_sam_time, mobile_sam_retrained_time, sam_time))
+        #     print("Image Index {}:".format(i))
+        #     # print("MSE loss: \t\t\t MobileSAM {:.3f} \t Our MobileSAM {:.3f}".format(customized_mseloss(pred, target).item(), customized_mseloss(our_pred, target).item()))
+        #     # print("Encoder inference time: \t Our MobileSAM {:.3f}s".format( mobile_sam_encoder_retrained_time))
+        #     print("Model inference time: \t\t Our MobileSAM {:.3f}s \t SAM {:.3f}s \n".format( mobile_sam_retrained_time, sam_time))
 
         if args.miou:
             sam_predictor.set_image(test_img)
-            mobile_sam_predictor.set_image(test_img)
+            # mobile_sam_predictor.set_image(test_img)
             mobile_sam_retrained_predictor.set_image(test_img)
 
             h, w, c = test_img.shape
@@ -184,22 +197,22 @@ if __name__ == "__main__":
                     sam_masks, _, _ = sam_predictor.predict(
                         point_coords=input_point,
                         point_labels=input_label,
-                        multimask_output=True,
+                        # multimask_output=True,
                     )
 
-                    mobile_sam_masks, _, _ = mobile_sam_predictor.predict(
-                        point_coords=input_point,
-                        point_labels=input_label,
-                        multimask_output=True,
-                    )
+                    # mobile_sam_masks, _, _ = mobile_sam_predictor.predict(
+                    #     point_coords=input_point,
+                    #     point_labels=input_label,
+                    #     multimask_output=True,
+                    # )
 
                     mobile_sam_retrained_masks, _, _ = mobile_sam_retrained_predictor.predict(
                         point_coords=input_point,
                         point_labels=input_label,
-                        multimask_output=True,
+                        # multimask_output=True,
                     )
 
-                    mobile_sam_iou += eval_miou(sam_masks, mobile_sam_masks)
+                    # mobile_sam_iou += eval_miou(sam_masks, mobile_sam_masks)
                     mobile_sam_retrained_iou += eval_miou(sam_masks, mobile_sam_retrained_masks)
 
     if args.miou:

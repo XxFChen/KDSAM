@@ -91,8 +91,6 @@ m3_cfgs = [
     [3, 2, 256, 0, 1, 1],
     [3, 2, 256, 1, 1, 1],
     [3, 2, 256, 0, 1, 1],
-    [3, 2, 256, 1, 1, 1],
-    [3, 2, 256, 0, 1, 1],
     [3, 2, 256, 0, 1, 1],
     [3, 2, 512, 0, 1, 2],
     [3, 2, 512, 1, 1, 1],
@@ -299,7 +297,6 @@ class RepViT(nn.Module):
         # setting of inverted residual blocks
         self.cfgs = self.arch_settings[arch]
         self.img_size = img_size
-
         # building first layer
         input_channel = self.cfgs[0][2]
         patch_embed = torch.nn.Sequential(Conv2d_BN(3, input_channel // 2, 3, 2, 1), torch.nn.GELU(),
@@ -338,73 +335,72 @@ class RepViT(nn.Module):
 
 
     
-    def forward(self, x, requires_feat=False):
-        # 这部分是原有的forward逻辑
-        counter = 0
-        output_dict = dict()
-        x = self.features[0](x)
-        output_dict['stem'] = x
-        feats = []  # 初始化特征列表，用于保存各个阶段的输出
-        for idx, f in enumerate(self.features[1:]):
-            x = f(x)
-            if idx in self.stage_idx:
-                output_dict[f'stage{counter}'] = x
-                counter += 1
-            if requires_feat:
-                feats.append(x)  # 保存中间层的特征
-
-        x = self.fuse_stage2(output_dict['stage2']) + self.fuse_stage3(output_dict['stage3'])
-        x = self.neck(x)
-
-        # 在requires_feat为True时，返回最终输出和中间特征
-        if requires_feat:
-            return x, feats
-        else:
-            # 如果不需要中间特征，则只返回最终的输出
-            return x
-
-
     # def forward(self, x):
+    #     # 这部分是原有的forward逻辑
     #     counter = 0
     #     output_dict = dict()
-    #     # patch_embed
     #     x = self.features[0](x)
+        
     #     output_dict['stem'] = x
-    #     # stages
+    #     feats = []  # 初始化特征列表，用于保存各个阶段的输出
     #     for idx, f in enumerate(self.features[1:]):
     #         x = f(x)
     #         if idx in self.stage_idx:
     #             output_dict[f'stage{counter}'] = x
     #             counter += 1
+    #             feats.append(x)  # 保存中间层的特征
+    #             print(f"Shape of feature {idx}: ", x.shape)
 
     #     x = self.fuse_stage2(output_dict['stage2']) + self.fuse_stage3(output_dict['stage3'])
-
     #     x = self.neck(x)
-    #     return x
+    #     print(len(feats))
+    #     print("repvit",x.shape)
+    #     # 在requires_feat为True时，返回最终输出和中间特征
+    #     return x, feats
+
+
+
+    def forward(self, x):
+        counter = 0
+        output_dict = dict()
+        # patch_embed
+        x = self.features[0](x)
+        output_dict['stem'] = x
+        # stages
+        for idx, f in enumerate(self.features[1:]):
+            x = f(x)
+            if idx in self.stage_idx:
+                output_dict[f'stage{counter}'] = x
+                counter += 1
+
+        x = self.fuse_stage2(output_dict['stage2']) + self.fuse_stage3(output_dict['stage3'])
+
+        x = self.neck(x)
+        return x
     
 
     
-    def stage_info(self, stage):
-        # 根据您模型的具体情况来定义每个阶段的输出大小和索引
-        # 以下是一个示例，您需要根据您的模型具体调整
-        if stage == 1:
-            index = 0
-            shape = (64, 56, 56)  # 示例值，实际值应根据您的模型而定
-        elif stage == 2:
-            index = 1
-            shape = (128, 28, 28)
-        elif stage == 3:
-            index = 2
-            shape = (256, 14, 14)
-        elif stage == 4:
-            index = 3
-            shape = (512, 7, 7)
-        elif stage == -1:  # 用于表示最终输出
-            index = -1
-            shape = (512,)  # 最终输出的特征维度
-        else:
-            raise RuntimeError(f'Stage {stage} out of range (1-4)')
-        return index, shape
+    # def stage_info(self, stage):
+    #     # 根据您模型的具体情况来定义每个阶段的输出大小和索引
+    #     # 以下是一个示例，您需要根据您的模型具体调整
+    #     if stage == 1:
+    #         index = 0
+    #         shape = (64, 256, 256)  # 示例值，实际值应根据您的模型而定
+    #     elif stage == 2:
+    #         index = 1
+    #         shape = (128, 128, 128)
+    #     elif stage == 3:
+    #         index = 2
+    #         shape = (256, 64, 64)
+    #     elif stage == 4:
+    #         index = 3
+    #         shape = (512, 32, 32)
+    #     elif stage == -1:  # 用于表示最终输出
+    #         index = -1
+    #         shape = (512,)  # 最终输出的特征维度
+    #     else:
+    #         raise RuntimeError(f'Stage {stage} out of range (1-4)')
+    #     return index, shape
 
 
 

@@ -17,8 +17,8 @@ from dataset import transform, sa1b_dataset
 from edge_sam.modeling.rep_vit import RepViT as StudentModel
 from edge_sam.build_sam import build_sam_vit_h 
 
+# from Distiller.ofa import OFA
 
-from Distiller.ofa import OFA
 # from torch import distributed as dist
 # from torch.utils.data.distributed import DistributedSampler
 
@@ -62,6 +62,14 @@ def parse_option():
     parser.add_argument('--log_dir', type=str, default="log", help='save directory')
     parser.add_argument('--save_iters', type=int, default=50000, help='save iterations')
 
+    # # 添加OFA特定的参数
+    # parser.add_argument('--gt-loss-weight', default=1., type=float, help='Ground truth loss weight')
+    # parser.add_argument('--kd-loss-weight', default=1., type=float, help='Knowledge Distillation loss weight')
+    # parser.add_argument('--ofa-eps', default=[1], nargs='+', type=float, help='OFA epsilon values for each stage')
+    # parser.add_argument('--ofa-stage', default=[1, 2, 3, 4], nargs='+', type=int, help='OFA stages to apply distillation')
+    # parser.add_argument('--ofa-loss-weight', default=1, type=float, help='OFA loss weight')
+    # parser.add_argument('--ofa-temperature', default=1, type=float, help='Temperature for OFA loss calculation')
+
     args = parser.parse_args()
     return args
 
@@ -98,6 +106,8 @@ def test(args, model, test_loader):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
+
+
 def main(args):
 
 
@@ -122,7 +132,7 @@ def main(args):
         cudnn.benchmark = args.benchmark
     
     # dataset
-    train_dirs = ["sa_" + str(i).zfill(6) for i in range(20, 21)]
+    train_dirs = ["sa_" + str(i).zfill(6) for i in range(20, 29)]
     val_dirs = ['sa_000137']
     train_dataset = sa1b_dataset(args.dataset_path, train_dirs, transform)
     val_dataset = sa1b_dataset(args.dataset_path, val_dirs, transform, args.eval_nums)
@@ -136,32 +146,36 @@ def main(args):
     # model
     teacher_checkpoint = '/root/autodl-tmp/sam_vit_h_4b8939.pth'  # 需要被替换为实际的路径
     
-    Full_model = build_sam_vit_h()
-    Full_model.load_state_dict(torch.load(teacher_checkpoint))
-    teacher_model = Full_model.image_encoder
-    teacher_model.to(device)
-    teacher_model.eval()
+    # Full_model = build_sam_vit_h()
+    # Full_model.load_state_dict(torch.load(teacher_checkpoint))
+    # teacher_model = Full_model.image_encoder
+    # teacher_model.to(device)
+    # teacher_model.eval()
 
-    arch = 'm1'  # 或 'm2' 或 'm3'，取决于你想使用哪种配置
-    model = StudentModel(arch=arch)
-    model.to(device)
+    arch = 'm3'  # 或 'm2' 或 'm3'，取决于你想使用哪种配置
+    student_model = StudentModel(arch=arch)
+    student_model.to(device)
+
+
+    criterion = nn.CrossEntropyLoss()  # 对于分类任务，使用交叉熵损失
+
 
     
     # optimizer and scheduler
-    optimizer = get_optimizer(args, model)
+    optimizer = get_optimizer(args, student_model)
     scheduler = get_scheduler(args, optimizer)
 
     total_iters = 0
 
     for epoch in range(1, args.epochs + 1):
         # training
-        model.train()
+        student_model.train()
         for batch_idx, (imgs, target_feats, mask_paths) in enumerate(train_loader):
             total_iters += 1
             
             imgs, target_feats = imgs.to(device), target_feats.to(device)
             optimizer.zero_grad()
-            pred_feats = model(imgs)
+            pred_feats = student_model(imgs)
             loss = customized_mseloss(pred_feats, target_feats)
             loss.backward()
             optimizer.step()
@@ -179,7 +193,7 @@ def main(args):
             if total_iters % args.save_iters == 0:
                 save_path = os.path.join(args.root_path, args.work_dir, args.save_dir, "iter_" + str(total_iters) + ".pth")
                 print("save model to {}".format(save_path))
-                torch.save(model.state_dict(), save_path)
+                torch.save(student_model.state_dict(), save_path)
 
                 # evaluation
             
@@ -190,10 +204,9 @@ def main(args):
             
 
         scheduler.step()
-
     # save final model
     if args.local_rank == 0:
-        torch.save(model.module.state_dict(), os.path.join(args.root_path, args.work_dir, args.save_dir, "iter_final.pth"))
+        torch.save(student_model.state_dict(), os.path.join(args.root_path, args.work_dir, args.save_dir, "iter_final.pth"))
         writer.close()
 
 if __name__ == "__main__":

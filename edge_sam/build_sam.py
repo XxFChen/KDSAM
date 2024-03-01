@@ -51,7 +51,7 @@ def build_sam_vit_b(checkpoint=None):
 
 def build_edge_sam(checkpoint=None, upsample_mode="bicubic"):
     image_encoder = RepViT(
-        arch="m1",
+        arch="m3",
         img_size=image_size,
         upsample_mode=upsample_mode
     )
@@ -124,3 +124,4 @@ def _build_sam(
             state_dict = torch.load(f, map_location="cpu")
         sam.load_state_dict(state_dict)
     return sam
+

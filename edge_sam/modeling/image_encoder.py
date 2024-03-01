@@ -36,6 +36,9 @@ class ImageEncoderViT(nn.Module):
         window_size: int = 0,
         global_attn_indexes: Tuple[int, ...] = (),
         #change
+        # num_classes = 256  # 假设您有10个类别
+        
+
         # global_pool: Literal['', 'avg', 'token', 'map'] = 'token',
         # class_token: bool = True,
         # pos_drop_rate: float = 0.,
@@ -130,67 +133,54 @@ class ImageEncoderViT(nn.Module):
             ),
             LayerNorm2d(out_chans),
         )
+        # self.global_pool = nn.AdaptiveAvgPool2d(1)
+        # self.classifier = nn.Linear(out_chans, num_classes)  # 注意这里使用的是embed_dim
+
+
+
+    # def forward(self, x: torch.Tensor) :
+    #     x, feats = self.forward_features(x, requires_feat=True)
+    #     feats.append(x)  # 将最终层前的特征也加入列表
+
+    #     return x, feats
         
+    #     # x = self.forward_features(x, requires_feat=False)
+    #     # return x
+
+
+    # def forward_features(self, x: torch.Tensor) :
+    #     feats = []  # 用于存储中间特征
+    #     x = self.patch_embed(x)
+    #     # print("x.patch_embed(x) shape: ", x.shape)
+    #     if self.pos_embed is not None:
+    #         x = x + self.pos_embed
+        
+    #     for blk in self.blocks:
+    #         x = blk(x)
+    #         # x = x.permute(0, 3, 1, 2)  # 这里假设x的形状是[batch_size, height, width, channels]
+    #         feats.append(x)
+            
+    #     #debug 
+    #     for i, feat in enumerate(feats):
+    #         print(f"Shape of feature {i}: ", feat.shape)
+    #     print(len(feats))
+    #     x = self.neck(x.permute(0, 3, 1, 2))
+    #     return (x, feats) 
+    
 
 
 
-    def forward(self, x: torch.Tensor, requires_feat: bool = False) :
-        if requires_feat:
-            x, feats = self.forward_features(x, requires_feat=True)
-            feats.append(x)  # 将最终层前的特征也加入列表
-            return x, feats
-        else:
-            x = self.forward_features(x, requires_feat=False)
-            return x
-
-
-    def forward_features(self, x: torch.Tensor, requires_feat: bool = False) :
-        feats = []  # 用于存储中间特征
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
-        
+
         for blk in self.blocks:
             x = blk(x)
-            if requires_feat:
-                feats.append(x)  # 收集每个块的输出
 
         x = self.neck(x.permute(0, 3, 1, 2))
-        return (x, feats) if requires_feat else x
 
-    
-
-    def stage_info(self, stage):
-        
-        shape = (4097, 768)  # 这是默认的shape，适用于大多数阶段
-        if stage == 1:
-            index = 1
-        elif stage == 2:
-            index = 3
-        elif stage == 3:
-            index = 9
-        elif stage == 4:
-            index = 11
-        elif stage == -1:
-            index = -1
-            shape = 768  # 最终阶段的特征维度可能与之前的不同
-        else:
-            raise ValueError(f'Stage {stage} out of range (1-4)')
-
-        return index, shape
-
-
-    # def forward(self, x: torch.Tensor) -> torch.Tensor:
-    #     x = self.patch_embed(x)
-    #     if self.pos_embed is not None:
-    #         x = x + self.pos_embed
-
-    #     for blk in self.blocks:
-    #         x = blk(x)
-
-    #     x = self.neck(x.permute(0, 3, 1, 2))
-
-    #     return x
+        return x
 
 
 

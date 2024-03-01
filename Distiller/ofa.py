@@ -9,14 +9,28 @@ from .registry import register_distiller
 from .utils import GAP1d, get_module_dict, init_weights, is_cnn_model, PatchMerging, SepConv, set_module_dict, \
     TokenFilter, TokenFnContext
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def ofa_loss(logits_student, logits_teacher, target_mask, eps, temperature=1.):
-    pred_student = F.softmax(logits_student / temperature, dim=1)
-    pred_teacher = F.softmax(logits_teacher / temperature, dim=1)
-    prod = (pred_teacher + target_mask) ** eps
-    loss = torch.sum(- (prod - target_mask) * torch.log(pred_student), dim=-1)
-    return loss.mean()
+def ofa_loss(features_student, features_teacher, eps=1e-6,temperature = 1.):
+    # 假设 features_student 和 features_teacher 都是特征图
+    # 计算 MSE 损失
+    print("Student features shape:", features_student.size())
+    print("Teacher features shape:", features_teacher.size())
+    loss = F.mse_loss(features_student, features_teacher, reduction='mean')
+    return loss
 
+class Adapter(nn.Module):
+    def __init__(self, input_channels, output_channels):
+        super(Adapter, self).__init__()
+        self.conv = nn.Conv2d(input_channels, output_channels, kernel_size=1)  # 1x1卷积用于通道数适配
+        self.bn = nn.BatchNorm2d(output_channels)  # 可选，但有助于提高稳定性
+        self.relu = nn.ReLU()  # 可选，增加非线性
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.relu(x)
+        return x
 
 @register_distiller
 class OFA(BaseDistiller):
@@ -37,7 +51,11 @@ class OFA(BaseDistiller):
 
         _, feature_dim_t = self.teacher.stage_info(-1)
         _, feature_dim_s = self.student.stage_info(-1)
-
+        #change
+        self.adapters = nn.ModuleDict()
+        for stage, num_channels in enumerate([64, 128, 256, 512], start=1):  # 学生模型的各阶段通道数
+            self.adapters[str(stage)] = Adapter(num_channels, 1280).to(device)  # 教师模型的通道数是1280   
+        #change
         for stage in self.args.ofa_stage:
             _, size_s = self.student.stage_info(stage)
 
@@ -49,7 +67,9 @@ class OFA(BaseDistiller):
                     down_sample_blks = []
                     for i in range(down_sample_blk_num):
                         if i == down_sample_blk_num - 1:
-                            out_chans = max(feature_dim_s, feature_dim_t)
+                            if isinstance(feature_dim_s, tuple):
+                                feature_dim_s = feature_dim_s[0]  # 假设通道数是元组中的第一个元素
+                                out_chans = max(feature_dim_s, feature_dim_t)
                         else:
                             out_chans = in_chans * 2
                         down_sample_blks.append(SepConv(in_chans, out_chans))
@@ -61,7 +81,7 @@ class OFA(BaseDistiller):
                     *down_sample_blks,
                     nn.AdaptiveAvgPool2d(1),
                     nn.Flatten(),
-                    nn.Linear(max(feature_dim_s, feature_dim_t), args.num_classes)  # todo: cifar100
+                    nn.Linear(max(feature_dim_s, feature_dim_t), 256)  # new change
                 )
             else:
                 patch_num, embed_dim = size_s
@@ -99,42 +119,38 @@ class OFA(BaseDistiller):
                     TokenFnContext(token_num, patch_merger),
                     blocks,
                     get_feature,
-                    nn.Linear(feature_dim_s, args.num_classes)  # todo: cifar100
+                    nn.Linear(feature_dim_s, 256)  # todo: cifar100
                 )
             set_module_dict(self.projector, stage, projector)
         self.projector.apply(init_weights)
         # print(self.projector)  # for debug
 
-    def forward(self, image, label, *args, **kwargs):
+    def forward(self, images, target_feats, **kwargs):
+        # 不再需要 label
         with torch.no_grad():
             self.teacher.eval()
-            logits_teacher = self.teacher(image)
+            _, feats_teacher = self.teacher(images, requires_feat=True)
 
-        logits_student, feat_student = self.student(image, requires_feat=True)
+        _, feats_student = self.student(images, requires_feat=True)
 
-        num_classes = logits_student.size(-1)
-        if len(label.shape) != 1:  # label smoothing
-            target_mask = F.one_hot(label.argmax(-1), num_classes)
-        else:
-            target_mask = F.one_hot(label, num_classes)
-
-        ofa_losses = []
-        for stage, eps in zip(self.args.ofa_stage, self.args.ofa_eps):
+        # 现在我们比较的是特征而不是 logits
+        total_loss = 0
+        for stage in self.args.ofa_stage:
+            idx_t, _ = self.teacher.stage_info(stage)
             idx_s, _ = self.student.stage_info(stage)
-            feat_s = feat_student[idx_s]
-            logits_student_head = get_module_dict(self.projector, stage)(feat_s)
+            feat_t = feats_teacher[idx_t]
+            feat_s = feats_student[idx_s]
+            # 检查特征图的空间维度是否需要调整以匹配
+            if feat_s.size(2) != feat_t.size(2) or feat_s.size(3) != feat_t.size(3):
+                # 使用双线性插值进行空间尺寸调整
+                feat_s = F.interpolate(feat_s, size=(feat_t.size(2), feat_t.size(3)), mode='bilinear', align_corners=False)
+            
+            # 检查并适配特征图的通道数
+            adapter = self.adapters[str(stage)]
+            feat_s = adapter(feat_s)  # 使用适配器层调整学生特征图的通道数
 
-            ofa_losses.append(
-                ofa_loss(logits_student_head, logits_teacher, target_mask, eps, self.args.ofa_temperature))
 
-        loss_ofa = self.args.ofa_loss_weight * sum(ofa_losses)
+            # 计算 OFA 损失
+            total_loss += ofa_loss(feat_s, feat_t)
 
-        loss_gt = self.args.gt_loss_weight * self.criterion(logits_student, label)
-        loss_kd = self.args.kd_loss_weight * ofa_loss(logits_student, logits_teacher, target_mask,
-                                                      self.args.ofa_eps[-1], self.args.ofa_temperature)
-        losses_dict = {
-            "loss_gt": loss_gt,
-            "loss_kd": loss_kd,
-            "loss_ofa": loss_ofa
-        }
-        return logits_student, losses_dict
+        return total_loss
