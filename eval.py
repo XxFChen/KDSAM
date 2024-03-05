@@ -92,7 +92,7 @@ if __name__ == "__main__":
     original_sam = sam_model_registry[args.sam_type](checkpoint=args.sam_ckpt)
     # 创建 RepVIT 实例并加载训练后的权重
     retrained_repvit = RepViT(arch="m3", img_size=1024, upsample_mode="bicubic")  # 或根据您的模型具体情况调整参数
-    retrained_repvit.load_state_dict(torch.load('/root/autodl-tmp/KDSAM/test/ckpt/iter_50000.pth'))
+    retrained_repvit.load_state_dict(torch.load('/root/autodl-tmp/KDSAM/test/ckpt/non_att_iter_30000.pth'))
     original_sam.image_encoder = retrained_repvit
     original_sam.to(device=args.device)
     mobile_sam_retrained = original_sam
@@ -197,7 +197,6 @@ if __name__ == "__main__":
                     sam_masks, _, _ = sam_predictor.predict(
                         point_coords=input_point,
                         point_labels=input_label,
-                        # multimask_output=True,
                     )
 
                     # mobile_sam_masks, _, _ = mobile_sam_predictor.predict(
@@ -209,7 +208,6 @@ if __name__ == "__main__":
                     mobile_sam_retrained_masks, _, _ = mobile_sam_retrained_predictor.predict(
                         point_coords=input_point,
                         point_labels=input_label,
-                        # multimask_output=True,
                     )
 
                     # mobile_sam_iou += eval_miou(sam_masks, mobile_sam_masks)

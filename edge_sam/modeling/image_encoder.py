@@ -85,7 +85,8 @@ class ImageEncoderViT(nn.Module):
         #     self.attn_pool = None
 
         # change
-        
+
+
         self.patch_embed = PatchEmbed(
             kernel_size=(patch_size, patch_size),
             stride=(patch_size, patch_size),
@@ -177,7 +178,7 @@ class ImageEncoderViT(nn.Module):
 
         for blk in self.blocks:
             x = blk(x)
-
+        
         x = self.neck(x.permute(0, 3, 1, 2))
 
         return x

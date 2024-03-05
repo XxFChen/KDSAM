@@ -320,6 +320,7 @@ class RepViT(nn.Module):
 
         stage2_channels = _make_divisible(self.cfgs[self.stage_idx[2]][2], 8)
         stage3_channels = _make_divisible(self.cfgs[self.stage_idx[3]][2], 8)
+
         self.fuse_stage2 = nn.Conv2d(stage2_channels, 256, kernel_size=1, bias=False)
         self.fuse_stage3 = OpSequential([
             nn.Conv2d(stage3_channels, 256, kernel_size=1, bias=False),
@@ -332,9 +333,11 @@ class RepViT(nn.Module):
             nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
             LayerNorm2d(256),
         )
+        # self.alpha = nn.Parameter(torch.randn(256,64,64))  # 可学习的参数alpha
+        # self.beta = nn.Parameter(torch.randn(256,64,64))   # 可学习的参数beta
+        # self.weights = torch.nn.Sequential(nn.Linear(64,64), torch.nn.ReLU(),
+        #                                   nn.Linear(64,64))
 
-
-    
     # def forward(self, x):
     #     # 这部分是原有的forward逻辑
     #     counter = 0
@@ -364,19 +367,29 @@ class RepViT(nn.Module):
         counter = 0
         output_dict = dict()
         # patch_embed
-        x = self.features[0](x)
+        x = self.features[0](x) 
         output_dict['stem'] = x
         # stages
         for idx, f in enumerate(self.features[1:]):
             x = f(x)
+            # 在这里保存特定块的输出
+            if idx == 4:
+                output_dict['block4'] = x
+            elif idx == 10:
+                output_dict['block10'] = x
+            elif idx == 27:  # 注意这里的索引是27而不是28，因为enumerate从0开始计数
+                output_dict['block28'] = x
             if idx in self.stage_idx:
                 output_dict[f'stage{counter}'] = x
                 counter += 1
 
-        x = self.fuse_stage2(output_dict['stage2']) + self.fuse_stage3(output_dict['stage3'])
+       
+        x_stage2 = self.fuse_stage2(output_dict['stage2'])
+        x_stage3 = self.fuse_stage3(output_dict['stage3'])
+        x = x_stage2 + x_stage3
 
         x = self.neck(x)
-        return x
+        return x , output_dict
     
 
     

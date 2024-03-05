@@ -60,7 +60,7 @@ def parse_option():
     parser.add_argument('--work_dir', type=str, default="work_dir", help='work directory')
     parser.add_argument('--save_dir', type=str, default="ckpt", help='save directory')
     parser.add_argument('--log_dir', type=str, default="log", help='save directory')
-    parser.add_argument('--save_iters', type=int, default=50000, help='save iterations')
+    parser.add_argument('--save_iters', type=int, default=30000, help='save iterations')
 
     # # 添加OFA特定的参数
     # parser.add_argument('--gt-loss-weight', default=1., type=float, help='Ground truth loss weight')
@@ -95,10 +95,14 @@ def customized_mseloss(pred_feats, target_feats):
 def test(args, model, test_loader):
     model.eval()
     test_loss = 0
+    arch = 'm3'  # 或 'm2' 或 'm3'，取决于你想使用哪种配置
+    student_model = StudentModel(arch=arch)
+    student_model.to(device)
+
     with torch.no_grad():
         for idx, (imgs, target_feats, mask_paths) in enumerate(test_loader):
             imgs, target_feats = imgs.to(device), target_feats.to(device)
-            pred_feats = model.module(imgs)
+            pred_feats = student_model(imgs)
             test_loss += customized_mseloss(pred_feats, target_feats).item()
 
     return test_loss / len(test_loader)
@@ -147,7 +151,7 @@ def main(args):
     teacher_checkpoint = '/root/autodl-tmp/sam_vit_h_4b8939.pth'  # 需要被替换为实际的路径
     
     # Full_model = build_sam_vit_h()
-    # Full_model.load_state_dict(torch.load(teacher_checkpoint))
+    # Full_model.load_state_dict(trch.load(teacher_checkpoint))
     # teacher_model = Full_model.image_encoder
     # teacher_model.to(device)
     # teacher_model.eval()
@@ -176,9 +180,38 @@ def main(args):
             imgs, target_feats = imgs.to(device), target_feats.to(device)
             optimizer.zero_grad()
             pred_feats = student_model(imgs)
+            
+
+             # change
+            # global_avg_pool = torch.nn.AdaptiveAvgPool2d(1)
+            
+            # t_attention_map = global_avg_pool(target_feats)
+            # t_attention_map = t_attention_map.view(target_feats.size(0), target_feats.size(1))
+            # t_attention_map_expanded = t_attention_map.unsqueeze(-1).unsqueeze(-1).expand_as(target_feats)
+            # alpha = student_model.weights(student_model.alpha)
+            # t_enhanced_feature_map =  target_feats   + alpha * t_attention_map_expanded
+            
+
+          
+
+            # s_attention_map = global_avg_pool(pred_feats)
+            # s_attention_map = s_attention_map.view(pred_feats.size(0), pred_feats.size(1))
+            # s_attention_map_expanded = s_attention_map.unsqueeze(-1).unsqueeze(-1).expand_as(pred_feats)
+            # beta = student_model.weights(student_model.beta)
+            # s_enhanced_feature_map =  pred_feats   +  beta * s_attention_map_expanded
+
+            
+            # change
+            
+            
+            
+            
+            # loss = customized_mseloss(s_enhanced_feature_map, t_enhanced_feature_map)
             loss = customized_mseloss(pred_feats, target_feats)
             loss.backward()
             optimizer.step()
+            
+
             
             
             # if is master process
@@ -198,7 +231,7 @@ def main(args):
                 # evaluation
             
             # if total_iters % args.eval_iters == 0:
-            #     test_loss = test(args, model, val_loader)
+            #     test_loss = test(args, student_model, val_loader)
             #     print('\nTest set: Average loss: {:.4f}\n'.format(test_loss))
             #     writer.add_scalar("eval_mse_loss", test_loss, total_iters)
             
